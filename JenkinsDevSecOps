@@ -1,0 +1,57 @@
+pipeline {
+    agent any
+    environment {
+        SONAR_HOME = tool "Sonar"
+    }
+    stages{
+        stage("Code Clone"){
+            steps {
+                git url: "https://github.com/swastik7777/node-todo-cicd.git",branch: "master"
+            }
+        }
+        stage("Code Build & Test"){
+            steps {
+                sh "docker build . -t node-app:v1"
+                }
+        }
+        stage("SonarQube Quality Check"){
+            steps {
+                withSonarQubeEnv("Sonar"){
+                    sh "$SONAR_HOME/bin/sonar-scanner -Dsonar.projectName=nodeapp -Dsonar.projectKey=nodeapp -X"
+                } 
+            }
+        }
+        stage("SonarQube Quality Gates"){
+            steps {
+                timeout (time: 1, unit: "MINUTES"){
+                  waitForQualityGate abortPipeline: false   
+                }
+                }
+        }
+        stage("Code Push To DockerHub"){
+            steps{
+                withCredentials([usernamePassword(credentialsId: "dockerHubCred",passwordVariable: "dockerHubCredPass",usernameVariable: "dockerHubCredUser")]){
+                    sh "docker login -u ${env.dockerHubCredUser} -p ${env.dockerHubCredPass}"
+                    sh "docker tag  node-app:v1 ${env.dockerHubCredUser}/nodeapp:v1"
+                    sh "docker push ${env.dockerHubCredUser}/nodeapp:v1"
+                }
+            }
+        }
+         stage("Trivy"){
+            steps{
+                sh "trivy image node-app:v1"
+            }
+        }
+        stage("OWASP"){
+            steps{
+                dependencyCheck additionalArguments: '--scan ./', odcInstallation: 'OWASP'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
+        stage("Code Deploy"){
+            steps{
+                sh "docker run -d -p 8000:8000  node-app:v1"
+            }
+        }
+    }
+}
