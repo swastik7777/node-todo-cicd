@@ -1,0 +1,31 @@
+pipeline{
+    
+    agent {label "Node-1"}
+    
+    stages{
+        stage("Code clone"){
+            steps{
+                git url: "https://github.com/swastik7777/node-todo-cicd.git/", branch: "master"
+            }
+        }
+        stage("Code Build "){
+            steps{
+                sh "docker build . -t node-app:latest"
+            }
+        }
+        stage("Code Push To dockerhub"){
+            steps{
+                withCredentials([usernamePassword(credentialsId: "dockerHubCred", usernameVariable: "dockerHubUser" , passwordVariable: "dockerHubPass")]){
+                    sh "docker login -u ${env.dockerHubUser} -p ${env.dockerHubPass}"
+                    sh "docker image tag node-app:latest ${env.dockerHubUser}/node-app:latest"
+                    sh "docker push ${env.dockerHubUser}/node-app:latest"
+                }
+            }
+        }
+        stage("Code Deploy"){
+            steps{
+                sh "docker-compose up -d"
+            }
+        }
+    }
+}
